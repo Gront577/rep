@@ -1,0 +1,30 @@
+#!/bin/bash
+
+backup_root="/home/user"
+restore_dir="/home/user/restore"
+
+# Находим последний backup каталог
+latest_backup=$(ls -d "$backup_root"/Backup-* 2>/dev/null | grep -E 'Backup-[0-9]{4}-[0-9]{2}-[0-9]{2}$' | sort -r | head -n 1)
+
+if [ -z "$latest_backup" ]; then
+    echo "Ошибка: не найден ни один backup каталог" >&2
+    exit 1
+fi
+
+# Создаем restore директорию (если не существует)
+mkdir -p "$restore_dir"
+
+# Копируем файлы, исключая версионные копии
+echo "Восстановление из backup: $latest_backup"
+count=0
+for file in "$latest_backup"/*; do
+    # Пропускаем каталоги и версионные копии (с датой в расширении)
+    if [ -f "$file" ] && [[ ! "$file" =~ \.[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+        filename=$(basename "$file")
+        cp "$file" "$restore_dir/$filename"
+        echo "Восстановлен: $filename"
+        ((count++))
+    fi
+done
+
+echo "Готово. Восстановлено файлов: $count"
