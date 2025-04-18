@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# Проверяем существование директории .trash
+trash_dir="/home/.trash"
+log_file="$trash_dir/.trash.log"
+
+if [ ! -d "$trash_dir" ]; then
+    mkdir -p "$trash_dir"
+    echo "Created $trash_dir directory"
+fi
+
+# Проверяем наличие файла для удаления
+if [ $# -ne 1 ] || [ ! -e "$1" ]; then
+    echo "Usage: $0 <filename> (file must exist)"
+    exit 1
+fi
+
+# Создаем уникальное имя для ссылки
+link_num=$(ls -1 "$trash_dir" | grep -v '.trash.log' | wc -l)
+link_name=$((link_num + 1))
+
+# Создаем жесткую ссылку
+ln "$1" "$trash_dir/$link_name" || {
+    echo "Error: failed to create link"
+    exit 1
+}
+
+# Записываем в лог
+path="$(pwd)/$1"
+echo "$path:$link_name" >> "$log_file"
+
+# Удаляем оригинальный файл
+rm -f "$1" && echo "Moved $1 to trash ($trash_dir/$link_name)"
