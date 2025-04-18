@@ -1,46 +1,56 @@
 #!/bin/bash
 
-last_backup=$(ls -d /home/user/* | awk '/Backup-[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/{print $0}' | sort -r | head -n 1 | tail -c 11)
-if [ -z "$last_backup" ]; then
-    last_backup="1970-01-01"
-fi
+source_dir="/home/user/source"
+backup_root="/home/user"
+report_file="/home/user/backup-report"
+current_date=$(date +%Y-%m-%d)
 
-touch /home/user/backup-report
+# Находим последний backup каталог
+latest_backup=$(ls -d "$backup_root"/Backup-* 2>/dev/null | grep -E 'Backup-[0-9]{4}-[0-9]{2}-[0-9]{2}$' | sort -r | head -n 1)
 
-((difference = $(date "+%s") - $(date --date="$last_backup" "+%s")))
-if [[ $difference -le 7*24*60*60 ]]; then
-    echo "[$(date +%F)] updating backup folder: Backup-$last_backup" >> /home/user/backup-report
-    new_files=""
-    update_files=""
-    for filename in /home/user/source/*; do
-        # Пропускаем всё, кроме обычных файлов
-        if [ ! -f "$filename" ]; then
-            continue
-        fi
+if [ -n "$latest_backup" ]; then
+    # Получаем дату последнего backup
+    backup_date=$(basename "$latest_backup" | cut -d'-' -f2-)
+    backup_timestamp=$(date --date="$backup_date" +%s)
+    current_timestamp=$(date +%s)
+    difference=$((current_timestamp - backup_timestamp))
+    
+    if [ $difference -le $((7 * 24 * 60 * 60)) ]; then
+        # Обновляем существующий backup
+        echo "[$current_date] Updating backup folder: $latest_backup" >> "$report_file"
         
-        if [ -f "/home/user/Backup-$last_backup/$(basename "$filename")" ]; then
-            copy_size=$(stat -c %s "/home/user/Backup-$last_backup/$(basename "$filename")")
-            size=$(stat -c %s "$filename")
-            if [[ $size -ne $copy_size ]]; then
-                mv "/home/user/Backup-$last_backup/$(basename "$filename")" "/home/user/Backup-$last_backup/$(basename "$filename").$(date +%F)"
-                cp "$filename" /home/user/Backup-"$last_backup"
-                update_files+="$(basename "$filename") $(basename "$filename").$(date +%F)\n"
+        for file in "$source_dir"/*; do
+            [ ! -f "$file" ] && continue
+            
+            filename=$(basename "$file")
+            backup_file="$latest_backup/$filename"
+            
+            if [ -f "$backup_file" ]; then
+                # Сравниваем размеры файлов
+                if [ $(stat -c%s "$file") -ne $(stat -c%s "$backup_file") ]; then
+                    # Создаем версионную копию
+                    mv "$backup_file" "$backup_file.$current_date"
+                    cp "$file" "$backup_file"
+                    echo "Updated: $filename (old version: $filename.$current_date)" >> "$report_file"
+                fi
+            else
+                # Новый файл
+                cp "$file" "$backup_file"
+                echo "Added new file: $filename" >> "$report_file"
             fi
- else
-            cp "$filename" /home/user/Backup-"$last_backup"
-            new_files+="$(basename "$filename")\n"
-        fi
-    done
-    echo -e -n "$new_files$update_files" >> /home/user/backup-report
-else
-    last_backup=$(date +%F)
-    mkdir /home/user/Backup-"$last_backup"
-    echo "[$(date +%F)] new backup folder created: Backup-$last_backup" >> /home/user/backup-report
-    for filename in /home/user/source/*; do
-        if [ ! -f "$filename" ]; then
-            continue
-        fi
-        cp "$filename" /home/user/Backup-"$last_backup"
-        echo "$(basename "$filename")" >> /home/user/backup-report
-    done
+        done
+        
+        exit 0
+    fi
 fi
+
+# Создаем новый backup
+new_backup="$backup_root/Backup-$current_date"
+mkdir -p "$new_backup"
+echo "[$current_date] New backup folder created: $new_backup" >> "$report_file"
+
+for file in "$source_dir"/*; do
+    [ ! -f "$file" ] && continue
+    cp "$file" "$new_backup"
+    echo "$(basename "$file")" >> "$report_file"
+done
