@@ -1,94 +1,46 @@
 #!/bin/bash
 
-# Уточненные пути согласно пояснению пользователя
-TRASH_DIR="/home/.trash"
-LOG_FILE="/home/.trash/trash.log"
-
-# Проверка количества аргументов
-if [ $# -ne 1 ]; then
-    echo "Ошибка: скрипт принимает ровно один аргумент - имя файла для восстановления." >&2
-    exit 1
+last_backup=$(ls -d /home/user/* | awk '/Backup-[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/{print $0}' | sort -r | head -n 1 | tail -c 11)
+if [ -z "$last_backup" ]; then
+    last_backup="1970-01-01"
 fi
 
-target_name="$1"
+touch /home/user/backup-report
 
-# Проверка существования необходимых файлов
-if [ ! -d "$TRASH_DIR" ]; then
-    echo "Ошибка: каталог корзины $TRASH_DIR не существует." >&2
-    exit 1
-fi
-
-if [ ! -f "$LOG_FILE" ]; then
-    echo "Ошибка: лог-файл $LOG_FILE не существует." >&2
-    exit 1
-fi
-
-# Функция для восстановления файла
-restore_file() {
-    local original_path="$1"
-    local trash_name="$2"
-    
-    # Проверяем существование исходного каталога
-    local original_dir=$(dirname "$original_path")
-    local restore_dir="$original_dir"
-    
-    if [ ! -d "$original_dir" ]; then
-        echo "Исходный каталог $original_dir не существует."
-        restore_dir="$HOME"
-        echo "Файл будет восстановлен в домашний каталог: $restore_dir"
-    fi
-    
-    # Проверяем существование файла в целевом каталоге
-    local restore_path="$restore_dir/$(basename "$original_path")"
-    while [ -e "$restore_path" ]; do
-        echo "Файл $(basename "$original_path") уже существует в $restore_dir"
-        read -p "Введите новое имя для восстановленного файла (или 'q' для отмены): " new_name
-        if [ "$new_name" = "q" ]; then
-            echo "Восстановление отменено."
-            return 1
+((difference = $(date "+%s") - $(date --date="$last_backup" "+%s")))
+if [[ $difference -le 7*24*60*60 ]]; then
+    echo "[$(date +%F)] updating backup folder: Backup-$last_backup" >> /home/user/backup-report
+    new_files=""
+    update_files=""
+    for filename in /home/user/source/*; do
+        # Пропускаем всё, кроме обычных файлов
+        if [ ! -f "$filename" ]; then
+            continue
         fi
-        restore_path="$restore_dir/$new_name"
-    done
-    
-    # Восстанавливаем файл
-    if ln "$TRASH_DIR/$trash_name" "$restore_path" 2>/dev/null; then
-        # Удаляем из корзины и обновляем лог
-        rm -f "$TRASH_DIR/$trash_name"
-        sed -i "/:$trash_name$/d" "$LOG_FILE"
-        echo "Файл успешно восстановлен в $restore_path"
-        return 0
-    else
-        echo "Ошибка: не удалось восстановить файл." >&2
-        return 1
-    fi
-}
-
-# Основной цикл обработки
-found=0
-while IFS=: read -r path trash_name; do
-    filename=$(basename "$path")
-    if [ "$filename" = "$target_name" ]; then
-        found=1
-        echo "Найден файл: $path (оригинальное расположение)"
-        read -p "Восстановить этот файл? (y/n/q) " answer
         
-        case $answer in
-            y|Y)
-                restore_file "$path" "$trash_name"
-                ;;
-            q|Q)
-                echo "Завершение работы скрипта."
-                exit 0
-                ;;
-            *)
-                echo "Пропускаем этот файл."
-                ;;
-        esac
-    fi
-done < "$LOG_FILE"
-
-if [ $found -eq 0 ]; then
-    echo "Файл с именем '$target_name' не найден в корзине."
+        if [ -f "/home/user/Backup-$last_backup/$(basename "$filename")" ]; then
+            copy_size=$(stat -c %s "/home/user/Backup-$last_backup/$(basename "$filename")")
+            size=$(stat -c %s "$filename")
+            if [[ $size -ne $copy_size ]]; then
+                mv "/home/user/Backup-$last_backup/$(basename "$filename")" "/home/user/Backup-$last_backup/$(basename "$filename").$(date +%F)"
+                cp "$filename" /home/user/Backup-"$last_backup"
+                update_files+="$(basename "$filename") $(basename "$filename").$(date +%F)\n"
+            fi
+ else
+            cp "$filename" /home/user/Backup-"$last_backup"
+            new_files+="$(basename "$filename")\n"
+        fi
+    done
+    echo -e -n "$new_files$update_files" >> /home/user/backup-report
+else
+    last_backup=$(date +%F)
+    mkdir /home/user/Backup-"$last_backup"
+    echo "[$(date +%F)] new backup folder created: Backup-$last_backup" >> /home/user/backup-report
+    for filename in /home/user/source/*; do
+        if [ ! -f "$filename" ]; then
+            continue
+        fi
+        cp "$filename" /home/user/Backup-"$last_backup"
+        echo "$(basename "$filename")" >> /home/user/backup-report
+    done
 fi
-
-exit 0
