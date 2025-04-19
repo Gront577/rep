@@ -1,0 +1,41 @@
+#!/bin/bash
+
+trash_dir="/home/.trash"
+log_file="$trash_dir/.trash.log"
+
+# Проверяем наличие корзины
+[ ! -d "$trash_dir" ] && { echo "Корзина не существует"; exit 1; }
+[ ! -f "$log_file" ] && { echo "Лог-файл не найден"; exit 1; }
+
+# Проверяем аргумент
+[ $# -ne 1 ] && { echo "Использование: $0 имя_файла"; exit 1; }
+
+# Ищем файл в логе
+grep "/$1:" "$log_file" | while read -r line; do
+    path=$(echo "$line" | cut -d: -f1)
+    link=$(echo "$line" | cut -d: -f2)
+    
+    echo "Найден файл: $path"
+    read -p "Восстановить? [y/N] " answer
+    
+    if [ "$answer" = "y" ]; then
+        # Определяем куда восстанавливать
+        dir=$(dirname "$path")
+        [ -d "$dir" ] || dir="$HOME"
+        
+        # Проверяем конфликты
+        new_path="$dir/$(basename "$path")"
+        [ -e "$new_path" ] && read -p "Файл существует. Новое имя: " new_name && new_path="$dir/$new_name"
+        
+        # Восстанавливаем
+        if ln "$trash_dir/$link" "$new_path" 2>/dev/null; then
+            rm -f "$trash_dir/$link"
+            sed -i "/$link$/d" "$log_file"
+            echo "Восстановлено в $new_path"
+        else
+            echo "Ошибка восстановления"
+        fi
+    fi
+done
+
+[ $(grep -c "/$1:" "$log_file") -eq 0 ] && echo "Файл $1 не найден в корзине"
