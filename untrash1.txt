@@ -10,18 +10,18 @@ log_file="$trash_dir/.trash.log"
 # Проверяем аргумент
 [ $# -ne 1 ] && { echo "Использование: $0 имя_файла" >&2; exit 1; }
 
-# Временный файл для результатов
+# Используем временный файл вместо пайпа
 temp_file=$(mktemp)
 grep "/$1:" "$log_file" > "$temp_file"
 
 found=0
 
+# Читаем из временного файла
 while IFS=: read -r path link; do
     found=1
     echo "Найден файл: $path"
     read -p "Восстановить? [y/N] " answer
     
-    # Простая проверка ответа без case
     if [[ "$answer" == [Yy]* ]]; then
         dir=$(dirname "$path")
         [ -d "$dir" ] || dir="$HOME"
