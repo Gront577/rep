@@ -3,14 +3,11 @@
 trash_dir="/home/.trash"
 log_file="$trash_dir/.trash.log"
 
-# Проверяем наличие корзины и лога
 [ ! -d "$trash_dir" ] && { echo "Ошибка: Корзина не существует" >&2; exit 1; }
 [ ! -f "$log_file" ] && { echo "Ошибка: Лог-файл не найден" >&2; exit 1; }
 
-# Проверяем аргумент
 [ $# -ne 1 ] && { echo "Использование: $0 имя_файла" >&2; exit 1; }
 
-# Используем временный файл и перенаправление
 exec 3< <(grep "/$1:" "$log_file")
 found=0
 
@@ -18,7 +15,6 @@ while IFS=: read -r path link <&3; do
     found=1
     echo "Найден файл: $path"
     
-    # Явно читаем ответ с терминала
     read -p "Восстановить? [y/N] " answer </dev/tty
     
     if [[ "$answer" =~ ^[Yy]$ ]]; then
@@ -26,7 +22,6 @@ while IFS=: read -r path link <&3; do
         [ -d "$dir" ] || dir="$HOME"
         new_path="$dir/$(basename "$path")"
         
-        # Обработка существующих файлов
         while [ -e "$new_path" ]; do
             read -p "Файл '$new_path' существует. Введите новое имя: " new_name </dev/tty
             [ -z "$new_name" ] && continue
