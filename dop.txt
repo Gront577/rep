@@ -1,0 +1,25 @@
+#!/bin/bash
+
+mkdir -p "test_dir"
+cd "test_dir"
+
+touch "file with spaces.txt"
+touch "-file.txt"
+touch "\\backslash\\file.txt"
+touch "??.txt"
+touch "&.txt"
+touch "|pipe|.txt"
+touch "#hash.txt"
+touch "'single quote'.txt"
+touch '"double quote".txt'
+touch $'new\nline.txt'
+
+mkdir -p "dir with space/subdir?"
+mkdir -p "another dir/-subdir"
+mkdir -p "strange\\dir"
+
+touch "dir with space/file with spaces.txt"
+touch "another dir/-subdir/--file.txt"
+touch $'strange\\dir/file\nname.txt'
+
+echo "Тестовые файлы и каталоги созданы в директории test_dir/"
