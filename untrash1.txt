@@ -10,26 +10,26 @@ log_file="$trash_dir/.trash.log"
 # Проверяем аргумент
 [ $# -ne 1 ] && { echo "Использование: $0 имя_файла" >&2; exit 1; }
 
-# Временный файл для результатов
-temp_file=$(mktemp)
-grep "/$1:" "$log_file" > "$temp_file"
-
+# Используем временный файл и перенаправление
+exec 3< <(grep "/$1:" "$log_file")
 found=0
 
-while IFS=: read -r path link; do
+while IFS=: read -r path link <&3; do
     found=1
     echo "Найден файл: $path"
-    read -p "Восстановить? [y/N] " answer
     
-    # Простая проверка ответа без case
-    if [[ "$answer" == [Yy]* ]]; then
+    # Явно читаем ответ с терминала
+    read -p "Восстановить? [y/N] " answer </dev/tty
+    
+    if [[ "$answer" =~ ^[Yy]$ ]]; then
         dir=$(dirname "$path")
         [ -d "$dir" ] || dir="$HOME"
         new_path="$dir/$(basename "$path")"
         
         # Обработка существующих файлов
         while [ -e "$new_path" ]; do
-            read -p "Файл '$new_path' существует. Введите новое имя: " new_name
+            read -p "Файл '$new_path' существует. Введите новое имя: " new_name </dev/tty
+            [ -z "$new_name" ] && continue
             new_path="$dir/$new_name"
         done
         
@@ -43,8 +43,7 @@ while IFS=: read -r path link; do
     else
         echo "Пропуск файла"
     fi
-done < "$temp_file"
+done
 
-rm -f "$temp_file"
-
+exec 3<&-
 [ $found -eq 0 ] && echo "Файл '$1' не найден в корзине"
