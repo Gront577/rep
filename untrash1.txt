@@ -3,47 +3,48 @@
 trash_dir="/home/.trash"
 log_file="$trash_dir/.trash.log"
 
-# Проверяем наличие корзины
-[ ! -d "$trash_dir" ] && { echo "Корзина не существует"; exit 1; }
-[ ! -f "$log_file" ] && { echo "Лог-файл не найден"; exit 1; }
+# Проверяем наличие корзины и лога
+[ ! -d "$trash_dir" ] && { echo "Ошибка: Корзина не существует" >&2; exit 1; }
+[ ! -f "$log_file" ] && { echo "Ошибка: Лог-файл не найден" >&2; exit 1; }
 
 # Проверяем аргумент
-[ $# -ne 1 ] && { echo "Использование: $0 имя_файла"; exit 1; }
+[ $# -ne 1 ] && { echo "Использование: $0 имя_файла" >&2; exit 1; }
 
-# Счетчик найденных файлов
+# Временный файл для результатов
+temp_file=$(mktemp)
+grep "/$1:" "$log_file" > "$temp_file"
+
 found=0
 
-# Ищем файл в логе
 while IFS=: read -r path link; do
-    if [[ "$path" == *"/$1" ]]; then
-        found=1
-        echo "Найден файл: $path"
-        read -p "Восстановить? [y/N] " answer
+    found=1
+    echo "Найден файл: $path"
+    read -p "Восстановить? [y/N] " answer
+    
+    # Простая проверка ответа без case
+    if [[ "$answer" == [Yy]* ]]; then
+        dir=$(dirname "$path")
+        [ -d "$dir" ] || dir="$HOME"
+        new_path="$dir/$(basename "$path")"
         
-        if [[ "$answer" == [Yy]* ]]; then
-            # Определяем куда восстанавливать
-            dir=$(dirname "$path")
-            [ -d "$dir" ] || dir="$HOME"
-            
-            # Проверяем конфликты
-            new_path="$dir/$(basename "$path")"
-            if [ -e "$new_path" ]; then
-                read -p "Файл существует. Новое имя: " new_name
-                new_path="$dir/$new_name"
-            fi
-            
-            # Восстанавливаем
-            if ln "$trash_dir/$link" "$new_path" 2>/dev/null; then
-                rm -f "$trash_dir/$link"
-                # Безопасное удаление строки из лог-файла
-                grep -v ":$link$" "$log_file" > "$log_file.tmp"
-                mv "$log_file.tmp" "$log_file"
-                echo "Восстановлено в $new_path"
-            else
-                echo "Ошибка восстановления"
-            fi
+        # Обработка существующих файлов
+        while [ -e "$new_path" ]; do
+            read -p "Файл '$new_path' существует. Введите новое имя: " new_name
+            new_path="$dir/$new_name"
+        done
+        
+        if ln "$trash_dir/$link" "$new_path" 2>/dev/null; then
+            rm -f "$trash_dir/$link"
+            sed -i "/:$link$/d" "$log_file"
+            echo "Успешно восстановлен: $new_path"
+        else
+            echo "Ошибка при восстановлении" >&2
         fi
+    else
+        echo "Пропуск файла"
     fi
-done < "$log_file"
+done < "$temp_file"
 
-[ $found -eq 0 ] && echo "Файл $1 не найден в корзине"
+rm -f "$temp_file"
+
+[ $found -eq 0 ] && echo "Файл '$1' не найден в корзине"
