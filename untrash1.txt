@@ -10,32 +10,40 @@ log_file="$trash_dir/.trash.log"
 # Проверяем аргумент
 [ $# -ne 1 ] && { echo "Использование: $0 имя_файла"; exit 1; }
 
+# Счетчик найденных файлов
+found=0
+
 # Ищем файл в логе
-grep "/$1:" "$log_file" | while read -r line; do
-    path=$(echo "$line" | cut -d: -f1)
-    link=$(echo "$line" | cut -d: -f2)
-    
-    echo "Найден файл: $path"
-    read -p "Восстановить? [y/N] " answer
-    
-    if [ "$answer" = "y" ]; then
-        # Определяем куда восстанавливать
-        dir=$(dirname "$path")
-        [ -d "$dir" ] || dir="$HOME"
+while IFS=: read -r path link; do
+    if [[ "$path" == *"/$1" ]]; then
+        found=1
+        echo "Найден файл: $path"
+        read -p "Восстановить? [y/N] " answer
         
-        # Проверяем конфликты
-        new_path="$dir/$(basename "$path")"
-        [ -e "$new_path" ] && read -p "Файл существует. Новое имя: " new_name && new_path="$dir/$new_name"
-        
-        # Восстанавливаем
-        if ln "$trash_dir/$link" "$new_path" 2>/dev/null; then
-            rm -f "$trash_dir/$link"
-            sed -i "/$link$/d" "$log_file"
-            echo "Восстановлено в $new_path"
-        else
-            echo "Ошибка восстановления"
+        if [[ "$answer" == [Yy]* ]]; then
+            # Определяем куда восстанавливать
+            dir=$(dirname "$path")
+            [ -d "$dir" ] || dir="$HOME"
+            
+            # Проверяем конфликты
+            new_path="$dir/$(basename "$path")"
+            if [ -e "$new_path" ]; then
+                read -p "Файл существует. Новое имя: " new_name
+                new_path="$dir/$new_name"
+            fi
+            
+            # Восстанавливаем
+            if ln "$trash_dir/$link" "$new_path" 2>/dev/null; then
+                rm -f "$trash_dir/$link"
+                # Безопасное удаление строки из лог-файла
+                grep -v ":$link$" "$log_file" > "$log_file.tmp"
+                mv "$log_file.tmp" "$log_file"
+                echo "Восстановлено в $new_path"
+            else
+                echo "Ошибка восстановления"
+            fi
         fi
     fi
-done
+done < "$log_file"
 
-[ $(grep -c "/$1:" "$log_file") -eq 0 ] && echo "Файл $1 не найден в корзине"
+[ $found -eq 0 ] && echo "Файл $1 не найден в корзине"
